@@ -9,7 +9,7 @@ Code for loading data to evaluate split correction pipeline.
 """
 
 from segmentation_skeleton_metrics.data_handling.graph_loading import (
-    GraphLoader
+    GraphLoader,
 )
 from segmentation_skeleton_metrics.utils import util
 from segmentation_skeleton_metrics.utils.img_util import TensorStoreImage
@@ -124,13 +124,10 @@ class CorrectedLabelHandler:
             Subset of labels that are considered to be valid. This argument
             accounts for segments removed due to filtering.
         """
-        
         self.mapping = dict()  # Maps label to equivalent class id
         self.inverse_mapping = dict()  # Maps class id to list of labels
         self.valid_labels = set(util.read_txt(labels_path).splitlines())
         self.init_mappings(label_pairs)
-
-        print("133 - Check:", "1085129783.0" in self.valid_labels)
 
     # --- Constructor Helpers ---
     def init_mappings(self, label_pairs):
@@ -173,7 +170,6 @@ class CorrectedLabelHandler:
         labels_graph = nx.Graph()
         labels_graph.add_nodes_from(self.valid_labels)
         labels_graph.add_edges_from(label_pairs)
-        print("176 - Check:", "1085129783.0" in labels_graph.nodes)
         return labels_graph
 
     # --- Core Routines ---
@@ -193,23 +189,6 @@ class CorrectedLabelHandler:
         """
         return 0 if label not in self.valid_labels else self.mapping[label]
 
-    # --- Helpers ---
-    def node_labels(self, graph):
-        """
-        Gets the set of unique node labels from the given graph.
-
-        Parameters
-        ----------
-        graph : LabeledGraph
-            Graph from which to retrieve the node labels.
-
-        Returns
-        -------
-        labels : Set[int]
-            Labels corresponding to nodes in the graph identified by "key".
-        """
-        return set().union(*(self.inverse_mapping[u] for u in labels))
-
 
 # --- Helpers ---
 def combine_graphs(graphs, label_handler):
@@ -226,7 +205,6 @@ def combine_graphs(graphs, label_handler):
     new_graphs : Dict[str, FragmentGraph]
         Updated graphs.
     """
-    print("229 - Checking:", "1085129783.0" in graphs.keys())
     new_graphs = dict()
     for key, graph in tqdm(graphs.items(), desc="Combine Graphs"):
         class_id = label_handler.get(key)
@@ -235,8 +213,6 @@ def combine_graphs(graphs, label_handler):
         else:
             new_graphs[class_id].add_graph(graph, set_kdtree=False)
     set_kdtrees(graphs)
-    print("# Graphs:", len(graphs))
-    print("# New Graphs:", len(new_graphs))
     return new_graphs
 
 
