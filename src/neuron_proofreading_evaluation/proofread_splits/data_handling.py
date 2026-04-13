@@ -167,9 +167,12 @@ def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
             xyz = gt_graph.node_xyz(i)
 
             # Find closest fragment node
-            dist, node = segment_graphs[segment_id].kdtree.query(xyz)
-            if dist < 20:
-                node_label[i] = node2label[segment_id][node]
+            if segment_id in segment_graphs:
+                dist, node = segment_graphs[segment_id].kdtree.query(xyz)
+                if dist < 20:
+                    node_label[i] = node2label[segment_id][node]
+            else:
+                print("Missing Segment Graph:", segment_id)
 
         gt_graph.node_label = np.array(node_label)
         gt_graph.fix_label_misalignments()
@@ -177,7 +180,7 @@ def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
 
 def update_and_merge_graphs(graphs, label_handler, proposals_df):
     """
-    Apply label updates and merge proposals into the graph collection.
+    Applies label updates and merge proposals into the graph collection.
     """
     # Update fragment graph label
     for graph in graphs.values():
