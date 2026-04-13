@@ -1,4 +1,4 @@
-# neuron_proofreading_evaluation
+# neuron-proofreading-evaluation
 
 [![License](https://img.shields.io/badge/license-MIT-brightgreen)](LICENSE)
 ![Code Style](https://img.shields.io/badge/code%20style-black-black)
