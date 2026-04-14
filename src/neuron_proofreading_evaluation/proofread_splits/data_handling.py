@@ -96,7 +96,7 @@ def build_graphs_at_threshold(
     # Build fragment graphs
     fragment_graphs = (
         update_and_merge_graphs(fragment_graphs, label_handler, proposals_df_t)
-        if t > 0.2
+        if t > 0.19
         else None
     )
 
@@ -159,6 +159,7 @@ def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
     segment_graphs, node2label = combine_graphs(fragment_graphs, label_handler)
 
     # Relabel ground truth graphs
+    missing_segment_ids = {}
     for gt_graph in gt_graphs.values():
         node_label = ["0"] * gt_graph.number_of_nodes()
         for i in [i for i in gt_graph.nodes if gt_graph.node_label[i] != "0"]:
@@ -172,10 +173,12 @@ def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
                 if dist < 20:
                     node_label[i] = node2label[segment_id][node]
             else:
-                print("Missing Segment Graph:", segment_id)
+                missing_segment_ids.add(segment_id)
 
         gt_graph.node_label = np.array(node_label)
         gt_graph.fix_label_misalignments()
+
+    print("Missing Segment Graph:", missing_segment_ids)
 
 
 def update_and_merge_graphs(graphs, label_handler, proposals_df):
