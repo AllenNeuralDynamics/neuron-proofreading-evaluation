@@ -136,15 +136,16 @@ def combine_graphs(graphs, label_handler):
 
 
 def merge_proposals(graphs, label_handler, proposals_df):
-    for proposal in proposals_df.index:
+    proposals_df = proposals_df.reset_index(drop=True).copy()
+    for i in proposals_df.index:
         # Extract proposal info
-        id1 = str(proposals_df["Segment1"][proposal])
+        id1 = str(proposals_df["Segment1"][i])
         class_id1 = label_handler.get(id1)
 
         # Connect fragments
         if class_id1 in graphs:
-            xyz1 = parse_coord_str(proposals_df["World1"][proposal])
-            xyz2 = parse_coord_str(proposals_df["World2"][proposal])
+            xyz1 = parse_coord_str(proposals_df["World1"][i])
+            xyz2 = parse_coord_str(proposals_df["World2"][i])
 
             d1, node1 = graphs[class_id1].kdtree.query(xyz1)
             d2, node2 = graphs[class_id1].kdtree.query(xyz2)
