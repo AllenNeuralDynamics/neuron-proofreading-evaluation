@@ -79,7 +79,7 @@ def load_proposals_df(path, proposal_type=None, threshold=0):
 
 # --- Graph Operations ---
 def apply_segment_labeling(graphs, labels):
-    segment_ids = [util.get_segment_id(lbl) for lbl in labels]
+    segment_ids = [util.get_segment_id(u) for u in labels]
     label_handler = LabelHandler(labels=segment_ids)
     for key, graph in graphs.items():
         graph.relabel_nodes(label_handler)
@@ -90,8 +90,8 @@ def build_graphs_at_threshold(
 ):
     # Label handler
     proposals_df_t = proposals_df[proposals_df["Prediction"] > t]
-    label_pairs = list(proposals_df_t.index)
-    label_handler = LabelHandler(labels=labels, label_pairs=label_pairs)
+    label_pairs = proposals_df_t.index if proposals_df.index.name else proposals_df_t["Proposal"]
+    label_handler = LabelHandler(labels=labels, label_pairs=list(label_pairs))
 
     # Build fragment graphs
     fragment_graphs = (
