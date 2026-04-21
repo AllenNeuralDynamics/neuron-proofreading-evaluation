@@ -177,6 +177,11 @@ def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
         gt_graph.fix_label_misalignments()
 
 
+def set_graph_color(graphs, color):
+    for graph in graphs.values():
+        graph.set_color(color)
+
+
 def update_and_merge_graphs(graphs, label_handler, proposals_df):
     """
     Applies label updates and merge proposals into the graph collection.
