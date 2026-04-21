@@ -90,13 +90,13 @@ def build_graphs_at_threshold(
 ):
     # Label handler
     proposals_df_t = proposals_df[proposals_df["Prediction"] > t]
-    label_pairs = proposals_df_t.index if proposals_df.index.name else proposals_df_t["Proposal"]
-    label_handler = LabelHandler(labels=labels, label_pairs=list(label_pairs))
+    label_pairs = get_label_pairs(proposals_df_t)
+    label_handler = LabelHandler(labels=labels, label_pairs=label_pairs)
 
     # Build fragment graphs
     fragment_graphs = (
         update_and_merge_graphs(fragment_graphs, label_handler, proposals_df_t)
-        if t > 0.19
+        if t >= 0.3
         else None
     )
 
@@ -223,6 +223,13 @@ def flip_coordinates(graphs):
     for key, graph in graphs.items():
         graphs[key].node_voxel[:, [0, 2]] = graph.node_voxel[:, [2, 0]]
     return graphs
+
+
+def get_label_pairs(proposals_df):
+    if proposals_df.index.name:
+        return list(proposals_df.index)
+    else:
+        return list(proposals_df["Proposal"])
 
 
 def parse_coord_str(s):
