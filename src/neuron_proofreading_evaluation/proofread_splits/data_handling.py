@@ -89,7 +89,7 @@ def build_graphs_at_threshold(
     t, gt_graphs, fragment_graphs, labels, proposals_df
 ):
     # Label handler
-    proposals_df_t = proposals_df[proposals_df["Prediction"] > t]
+    proposals_df_t = proposals_df[proposals_df["Prediction"] >= t]
     label_pairs = get_label_pairs(proposals_df_t)
     label_handler = LabelHandler(labels=labels, label_pairs=label_pairs)
 

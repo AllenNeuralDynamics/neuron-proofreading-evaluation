@@ -25,8 +25,8 @@ from neuron_proofreading_evaluation.proofread_splits import (
 
 # --- Precision-Recall Curves ---
 def compute_precision_recall_from_df(results_df):
-    initial_merges = results_df.loc[1.0, "# Merges"]
-    initial_splits = results_df.loc[1.0, "# Splits"]
+    initial_merges = results_df.loc[np.inf, "# Merges"]
+    initial_splits = results_df.loc[np.inf, "# Splits"]
     for t in results_df.index:
         tp = initial_splits - results_df.loc[t, "# Splits"]
         fp = results_df.loc[t, "# Merges"] - initial_merges
@@ -67,6 +67,7 @@ def compute_splits_and_merges(
 
 # --- Helpers ---
 def create_results_df(dt=0.02):
+    # Create empty dataframe
     columns = [
         "Threshold",
         "# Merges",
@@ -77,4 +78,9 @@ def create_results_df(dt=0.02):
     ]
     results_df = pd.DataFrame(columns=columns)
     results_df["Threshold"] = np.round(np.arange(0, 1 + dt, dt), decimals=2)
-    return results_df.set_index("Threshold")
+    results_df = results_df.set_index("Threshold")
+
+    # Add row for inital merge and split counts
+    final_row = pd.DataFrame(index=[np.inf], columns=columns[1:])
+    results_df = pd.concat([results_df, final_row])
+    return results_df
