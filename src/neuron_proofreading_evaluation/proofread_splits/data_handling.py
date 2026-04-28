@@ -16,6 +16,7 @@ from segmentation_skeleton_metrics.utils import util
 from segmentation_skeleton_metrics.utils.img_util import TensorStoreImage
 
 import numpy as np
+import os
 import pandas as pd
 
 
@@ -55,49 +56,45 @@ def load_fragments(
     return graphs
 
 
-def load_label_pairs(path):
-    label_pairs = list()
-    for label_pair_str in util.read_txt(path).splitlines():
-        id1, id2 = sorted(label_pair_str.replace(" ", "").split(","))
-        label_pairs.append((id1, id2))
-    return label_pairs
+def load_multiround_proposal_df(csv_paths):
+    def get_value(idx):
+        name, _ = os.path.splitext(csv_path)
+        part = os.path.basename(name).split("_")[idx]
+        return float(part.split("=")[-1])
+
+    df_list = list()
+    last_round_id = 0
+    for csv_path in csv_paths:
+        # Extract info
+        only_leaf2leaf = "leaf2leaf" in csv_path
+        round_id = get_value(-2)
+        threshold = get_value(-1)
+
+        # Collect results
+        assert round_id > last_round_id
+        df_list.append(load_proposal_df(csv_path, only_leaf2leaf, threshold))
+        last_round_id = round_id
+    return df_list
 
 
-def load_proposals_df(path, proposal_type=None, threshold=0):
-    # Read and reformat csv
-    proposals_df = pd.read_csv(path)
-    proposals_df["Proposal"] = proposals_df["Proposal"].apply(clean_tuple)
-    proposals_df = proposals_df.set_index("Proposal")
-
-    # Extract sub df
-    if proposal_type == "leaf2leaf":
-        proposals_df = proposals_df[proposals_df["Leaf2Leaf"]]
-    elif proposal_type == "leaf2branch":
-        proposals_df = proposals_df[~proposals_df["Leaf2Leaf"]]
-    return proposals_df[proposals_df["Prediction"] > threshold]
+def load_proposal_df(csv_path, only_leaf2leaf=False, threshold=0):
+    df = pd.read_csv(csv_path).reset_index(drop=True)
+    df["Prediction"] = df["Prediction"].apply(float)
+    df["Proposal"] = df["Proposal"].apply(clean_tuple)
+    return get_subdf(df, only_leaf2leaf, threshold)
 
 
 # --- Graph Operations ---
-def apply_segment_labeling(graphs, labels):
-    segment_ids = [util.get_segment_id(u) for u in labels]
-    label_handler = LabelHandler(labels=segment_ids)
-    for key, graph in graphs.items():
-        graph.relabel_nodes(label_handler)
-
-
-def build_graphs_at_threshold(
-    t, gt_graphs, fragment_graphs, labels, proposals_df
+def apply_label_mapping_to_graphs(
+    gt_graphs, fragment_graphs, labels, proposals_df
 ):
     # Label handler
-    proposals_df_t = proposals_df[proposals_df["Prediction"] >= t]
-    label_pairs = get_label_pairs(proposals_df_t)
+    label_pairs = proposals_df["Proposal"].tolist()
     label_handler = LabelHandler(labels=labels, label_pairs=label_pairs)
 
     # Build fragment graphs
-    fragment_graphs = (
-        update_and_merge_graphs(fragment_graphs, label_handler, proposals_df_t)
-        if t >= 0.3
-        else None
+    fragment_graphs = update_and_merge_graphs(
+        fragment_graphs, label_handler, proposals_df
     )
 
     # Build ground truth graphs
@@ -105,6 +102,32 @@ def build_graphs_at_threshold(
         graph.relabel_nodes(label_handler)
 
     return gt_graphs, fragment_graphs
+
+
+def apply_segment_labeling(graphs, labels):
+    segment_ids = [util.get_segment_id(u) for u in labels]
+    label_handler = LabelHandler(labels=segment_ids)
+    for key, graph in graphs.items():
+        graph.relabel_nodes(label_handler)
+
+
+def clean_tuple(t):
+    """
+    Normalizes a tuple-like string into a standardized ordered tuple.
+
+    Parameters
+    ----------
+    t : str
+        Input representing a tuple, typically a string like "('a', 'b')".
+
+    Returns
+    -------
+    Tuple[str]
+        A tuple containing two cleaned identifiers, sorted lexicographically.
+    """
+    proposal = str(t).translate(str.maketrans("", "", "()'"))
+    id1, id2 = sorted(proposal.replace(" ", "").split(","))
+    return (id1, id2)
 
 
 def combine_graphs(graphs, label_handler):
@@ -133,6 +156,12 @@ def combine_graphs(graphs, label_handler):
             node2name[class_id].extend([key] * graph.number_of_nodes())
     set_kdtrees(graphs)
     return new_graphs, node2name
+
+
+def get_subdf(df, only_leaf2leaf, threshold):
+    if only_leaf2leaf:
+        df = df[df["Leaf2Leaf"]]
+    return df[df["Prediction"] > threshold]
 
 
 def merge_proposals(graphs, label_handler, proposals_df):
@@ -177,11 +206,6 @@ def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
         gt_graph.fix_label_misalignments()
 
 
-def set_graph_color(graphs, color):
-    for graph in graphs.values():
-        graph.set_color(color)
-
-
 def update_and_merge_graphs(graphs, label_handler, proposals_df):
     """
     Applies label updates and merge proposals into the graph collection.
@@ -197,25 +221,6 @@ def update_and_merge_graphs(graphs, label_handler, proposals_df):
 
 
 # --- Helpers ---
-def clean_tuple(t):
-    """
-    Normalizes a tuple-like string into a standardized ordered tuple.
-
-    Parameters
-    ----------
-    t : str
-        Input representing a tuple, typically a string like "('a', 'b')".
-
-    Returns
-    -------
-    Tuple[str]
-        A tuple containing two cleaned identifiers, sorted lexicographically.
-    """
-    proposal = str(t).translate(str.maketrans("", "", "()'"))
-    id1, id2 = sorted(proposal.replace(" ", "").split(","))
-    return (id1, id2)
-
-
 def flip_coordinates(graphs):
     """
     Flips the X and Z coordinates for a collections of graphs.
@@ -228,13 +233,6 @@ def flip_coordinates(graphs):
     for key, graph in graphs.items():
         graphs[key].node_voxel[:, [0, 2]] = graph.node_voxel[:, [2, 0]]
     return graphs
-
-
-def get_label_pairs(proposals_df):
-    if proposals_df.index.name:
-        return list(proposals_df.index)
-    else:
-        return list(proposals_df["Proposal"])
 
 
 def parse_coord_str(s):
@@ -252,6 +250,11 @@ def parse_coord_str(s):
         1D array of floats parsed from the input string.
     """
     return np.fromstring(s.strip("[]"), sep=" ")
+
+
+def set_graph_color(graphs, color):
+    for graph in graphs.values():
+        graph.set_color(color)
 
 
 def set_kdtrees(graphs):
