@@ -56,7 +56,7 @@ def load_fragments(
     return graphs
 
 
-def load_proposal_df(csv_paths):
+def load_multiround_proposal_df(csv_paths):
     def get_value(idx):
         name, _ = os.path.splitext(csv_path)
         part = os.path.basename(name).split("_")[idx]
@@ -72,11 +72,15 @@ def load_proposal_df(csv_paths):
 
         # Collect results
         assert round_id > last_round_id
-        df = pd.read_csv(csv_path).reset_index(drop=True)
-        df["Proposal"] = df["Proposal"].apply(clean_tuple)
-        df_list.append(get_subdf(df, only_leaf2leaf, threshold))
+        df_list.append(load_proposal_df(csv_path, only_leaf2leaf, threshold))
         last_round_id = round_id
     return df_list
+
+
+def load_proposal_df(csv_path, only_leaf2leaf, threshold):
+    df = pd.read_csv(csv_path).reset_index(drop=True)
+    df["Proposal"] = df["Proposal"].apply(clean_tuple)
+    return get_subdf(df, only_leaf2leaf, threshold)
 
 
 # --- Graph Operations ---

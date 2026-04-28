@@ -14,8 +14,10 @@ from segmentation_skeleton_metrics.skeleton_metrics import (
     SplitCountMetric,
 )
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import tqdm as tqdm
 
 from neuron_proofreading_evaluation.proofread_splits import (
     data_handling as data_util,
@@ -24,15 +26,37 @@ from neuron_proofreading_evaluation.proofread_splits import (
 
 # --- Precision-Recall Curves ---
 def compute_precision_recall(
+    gt_graphs, fragment_graphs, labels, proposal_df, dt=0.02
+):
+    results_df = create_thresholded_results_df(dt=dt)
+    for t in tqdm(results_df.index, desc="Thresholded Precision-Recall"):
+        # Compile proposals
+        proposal_df_t = data_util.get_subdf(proposal_df, False, t)
+        skip_merge_cnt = t > 0.29
+
+        # Compute metrics
+        n_splits, n_merges = count_splits_and_merges(
+            deepcopy(gt_graphs),
+            deepcopy(fragment_graphs),
+            labels,
+            proposal_df_t,
+            skip_merge_cnt=skip_merge_cnt,
+        )
+
+        results_df.loc[t, "# Splits"] = n_splits
+        results_df.loc[t, "# Merges"] = n_merges
+
+
+def compute_multiround_precision_recall(
     gt_graphs, fragment_graphs, labels, csv_paths
 ):
     # Initializations
     n_rounds = len(csv_paths)
-    proposal_df_list = data_util.load_proposal_df(csv_paths)
+    proposal_df_list = data_util.load_multiround_proposal_df(csv_paths)
     results_df = create_multiround_results_df(n_rounds)
 
     # Evaluate
-    for k in tqdm(np.arange(n_rounds + 1), desc="Precision-Recall-F1":
+    for k in tqdm(np.arange(n_rounds + 1), desc="Precision-Recall-F1"):
         # Compile proposals
         proposal_df_k = proposal_df_list[0:k]
         if k > 0:
@@ -70,7 +94,7 @@ def compute_precision_recall_from_df(results_df):
 
 
 def count_splits_and_merges(
-    gt_graphs, fragment_graphs, labels, proposals_df
+    gt_graphs, fragment_graphs, labels, proposals_df, skip_merge_cnt=False
 ):
     # Relabel data
     if len(proposals_df) > 0:
@@ -87,15 +111,36 @@ def count_splits_and_merges(
     n_splits = split_cnts["# Splits"].sum()
 
     # Count merges
-    merge_count_metric = MergeCountMetric(verbose=False)
-    merge_cnts = merge_count_metric(gt_graphs, fragment_graphs)
-    n_merges = merge_cnts["# Merges"].sum()
+    if skip_merge_cnt:
+        n_merges = np.nan
+    else:
+        merge_count_metric = MergeCountMetric(verbose=False)
+        merge_cnts = merge_count_metric(gt_graphs, fragment_graphs)
+        n_merges = merge_cnts["# Merges"].sum()
 
     return n_splits, n_merges
 
 
+def save_precision_recall_curve(results_df, path, title=""):
+    plt.figure()
+    plt.plot(results_df.index, results_df["Precision"], label="Precision", linewidth=3, zorder=3)
+    plt.plot(results_df.index, results_df["Recall"], label="Recall", linewidth=3, zorder=3)
+    plt.plot(results_df.index, results_df["F1"], label="F1", linewidth=3, zorder=3)
+
+    k = len(results_df) / 2
+    plt.axvline(k, linestyle="dotted", linewidth=1.1, color="k", zorder=3)
+
+    plt.xlabel(results_df.index.name, fontsize=13)
+    plt.ylabel("Score", fontsize=13)
+    plt.title(title, fontsize=14)
+    plt.legend()
+    plt.grid(True, zorder=0)
+
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+
+
 # --- Helpers ---
-def create_results_df(dt=0.02):
+def create_thresholded_results_df(dt=0.02):
     # Create empty dataframe
     columns = [
         "Threshold",
