@@ -13,11 +13,11 @@ from segmentation_skeleton_metrics.skeleton_metrics import (
     MergeCountMetric,
     SplitCountMetric,
 )
+from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tqdm as tqdm
 
 from neuron_proofreading_evaluation.proofread_splits import (
     data_handling as data_util,
@@ -32,7 +32,7 @@ def compute_precision_recall(
     for t in tqdm(results_df.index, desc="Thresholded Precision-Recall"):
         # Compile proposals
         proposal_df_t = data_util.get_subdf(proposal_df, False, t)
-        skip_merge_cnt = t > 0.29
+        skip_merge_cnt = t < 0.29
 
         # Compute metrics
         n_splits, n_merges = count_splits_and_merges(
@@ -45,6 +45,8 @@ def compute_precision_recall(
 
         results_df.loc[t, "# Splits"] = n_splits
         results_df.loc[t, "# Merges"] = n_merges
+
+    return compute_precision_recall_from_df(results_df)
 
 
 def compute_multiround_precision_recall(
@@ -67,19 +69,18 @@ def compute_multiround_precision_recall(
             deepcopy(gt_graphs),
             deepcopy(fragment_graphs),
             labels,
-            proposal_df_k
+            proposal_df_k,
         )
 
         results_df.loc[k, "# Splits"] = n_splits
         results_df.loc[k, "# Merges"] = n_merges
 
-    compute_precision_recall_from_df(results_df)
-    return results_df
+    return compute_precision_recall_from_df(results_df)
 
 
 def compute_precision_recall_from_df(results_df):
-    initial_merges = results_df.loc[0, "# Merges"]
-    initial_splits = results_df.loc[0, "# Splits"]
+    initial_merges = results_df.loc[np.inf, "# Merges"]
+    initial_splits = results_df.loc[np.inf, "# Splits"]
     for i in results_df.index:
         tp = initial_splits - results_df.loc[i, "# Splits"]
         fp = results_df.loc[i, "# Merges"] - initial_merges
@@ -91,6 +92,7 @@ def compute_precision_recall_from_df(results_df):
         results_df.loc[i, "Precision"] = round(precision, 4)
         results_df.loc[i, "Recall"] = round(recall, 4)
         results_df.loc[i, "F1"] = round(f1, 4)
+    return results_df
 
 
 def count_splits_and_merges(
@@ -121,16 +123,16 @@ def count_splits_and_merges(
     return n_splits, n_merges
 
 
-def save_precision_recall_curve(results_df, path, title=""):
+def save_precision_recall_curve(df, path, show_midpoint=False, title=""):
     plt.figure()
-    plt.plot(results_df.index, results_df["Precision"], label="Precision", linewidth=3, zorder=3)
-    plt.plot(results_df.index, results_df["Recall"], label="Recall", linewidth=3, zorder=3)
-    plt.plot(results_df.index, results_df["F1"], label="F1", linewidth=3, zorder=3)
+    for t in ["Precision", "Recall", "F1"]:
+        plt.plot(df.index, df[t], label=t, linewidth=3, zorder=3)
 
-    k = len(results_df) / 2
-    plt.axvline(k, linestyle="dotted", linewidth=1.1, color="k", zorder=3)
+    if show_midpoint:
+        x = len(df) / 2
+        plt.axvline(x, linestyle="dotted", linewidth=1.1, color="k", zorder=3)
 
-    plt.xlabel(results_df.index.name, fontsize=13)
+    plt.xlabel(df.index.name, fontsize=13)
     plt.ylabel("Score", fontsize=13)
     plt.title(title, fontsize=14)
     plt.legend()

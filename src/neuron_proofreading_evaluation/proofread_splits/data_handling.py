@@ -77,8 +77,9 @@ def load_multiround_proposal_df(csv_paths):
     return df_list
 
 
-def load_proposal_df(csv_path, only_leaf2leaf, threshold):
+def load_proposal_df(csv_path, only_leaf2leaf=False, threshold=0):
     df = pd.read_csv(csv_path).reset_index(drop=True)
+    df["Prediction"] = df["Prediction"].apply(float)
     df["Proposal"] = df["Proposal"].apply(clean_tuple)
     return get_subdf(df, only_leaf2leaf, threshold)
 
