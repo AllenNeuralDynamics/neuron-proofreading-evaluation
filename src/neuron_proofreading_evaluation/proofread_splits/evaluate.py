@@ -50,14 +50,10 @@ def compute_precision_recall(
 
 
 def compute_multiround_precision_recall(
-    gt_graphs, fragment_graphs, labels, csv_paths
+    gt_graphs, fragment_graphs, labels, proposal_df_list
 ):
-    # Initializations
-    n_rounds = len(csv_paths)
-    proposal_df_list = data_util.load_multiround_proposal_df(csv_paths)
+    n_rounds = len(proposal_df_list)
     results_df = create_multiround_results_df(n_rounds)
-
-    # Evaluate
     for k in tqdm(np.arange(n_rounds + 1), desc="Precision-Recall-F1"):
         # Compile proposals
         proposal_df_k = proposal_df_list[0:k]
@@ -75,7 +71,11 @@ def compute_multiround_precision_recall(
         results_df.loc[k, "# Splits"] = n_splits
         results_df.loc[k, "# Merges"] = n_merges
 
-    return compute_precision_recall_from_df(results_df)
+    # Compute precision-recall-f1
+    results_df.loc[np.inf, "# Splits"] = results_df.loc[0, "# Splits"]
+    results_df.loc[np.inf, "# Merges"] = results_df.loc[0, "# Merges"]
+    results_df = compute_precision_recall_from_df(results_df)
+    return results_df
 
 
 def compute_precision_recall_from_df(results_df):
