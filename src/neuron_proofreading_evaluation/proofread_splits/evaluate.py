@@ -129,7 +129,7 @@ def save_precision_recall_curve(df, path, show_midpoint=False, title=""):
         plt.plot(df.index, df[t], label=t, linewidth=3, zorder=3)
 
     if show_midpoint:
-        x = len(df) / 2
+        x = (len(df) - 1) / 2
         plt.axvline(x, linestyle="dotted", linewidth=1.1, color="k", zorder=3)
 
     plt.xlabel(df.index.name, fontsize=13)
