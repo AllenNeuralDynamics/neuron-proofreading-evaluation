@@ -185,7 +185,7 @@ def merge_proposals(graphs, label_handler, proposals_df):
 def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
     # Create segment graphs
     labels = list(fragment_graphs.keys())
-    label_handler = LabelHandler(labels=labels, use_segment_mapping=True)
+    label_handler = LabelHandler(labels=labels)
     segment_graphs, node2label = combine_graphs(fragment_graphs, label_handler)
 
     # Relabel ground truth graphs
