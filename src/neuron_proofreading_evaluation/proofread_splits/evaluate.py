@@ -87,11 +87,12 @@ def compute_precision_recall_from_df(results_df):
 
         precision = 1 - fp / (fp + tp + 1e-5)
         recall = tp / (initial_splits + 1e-5)
-        f1 = 2 * precision * recall / (precision + recall)
+        f1 = 2 * precision * recall / (precision + recall + 1e-5)
 
         results_df.loc[i, "Precision"] = round(precision, 4)
         results_df.loc[i, "Recall"] = round(recall, 4)
         results_df.loc[i, "F1"] = round(f1, 4)
+    results_df = results_df.drop(index=np.inf)
     return results_df
 
 
@@ -100,7 +101,7 @@ def count_splits_and_merges(
 ):
     # Relabel data
     if len(proposals_df) > 0:
-        gt_graphs, fragment_graphs = data_util.apply_label_mapping_to_graphs(
+        gt_graphs, fragment_graphs = data_util.apply_split_corrections(
             gt_graphs,
             fragment_graphs,
             labels,
@@ -142,41 +143,20 @@ def save_precision_recall_curve(df, path, show_midpoint=False, title=""):
 
 
 # --- Helpers ---
-def create_thresholded_results_df(dt=0.02):
-    # Create empty dataframe
-    columns = [
-        "Threshold",
-        "# Merges",
-        "# Splits",
-        "Precision",
-        "Recall",
-        "F1",
-    ]
-    results_df = pd.DataFrame(columns=columns)
-    results_df["Threshold"] = np.round(np.arange(0, 1 + dt, dt), decimals=2)
-    results_df = results_df.set_index("Threshold")
-
-    # Add row for inital merge and split counts
+def _create_results_df(index_col, index_values):
+    columns = [index_col, "# Merges", "# Splits", "Precision", "Recall", "F1"]
+    df = pd.DataFrame(columns=columns)
+    df[index_col] = index_values
+    df = df.set_index(index_col)
     final_row = pd.DataFrame(index=[np.inf], columns=columns[1:])
-    results_df = pd.concat([results_df, final_row])
-    return results_df
+    return pd.concat([df, final_row])
+
+
+def create_thresholded_results_df(dt=0.02):
+    thresholds = np.round(np.arange(0, 1 + dt, dt), decimals=2)
+    return _create_results_df("Threshold", thresholds)
 
 
 def create_multiround_results_df(n_rounds):
-    # Create empty dataframe
-    columns = [
-        "Round",
-        "# Merges",
-        "# Splits",
-        "Precision",
-        "Recall",
-        "F1",
-    ]
-    results_df = pd.DataFrame(columns=columns)
-    results_df["Round"] = np.arange(n_rounds + 1).astype(int)
-    results_df = results_df.set_index("Round")
-
-    # Add row for inital merge and split counts
-    final_row = pd.DataFrame(index=[np.inf], columns=columns[1:])
-    results_df = pd.concat([results_df, final_row])
-    return results_df
+    rounds = np.arange(n_rounds + 1).astype(int)
+    return _create_results_df("Round", rounds)

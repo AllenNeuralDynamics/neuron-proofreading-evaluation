@@ -8,12 +8,15 @@ Code for loading data to evaluate split correction pipeline.
 
 """
 
-from segmentation_skeleton_metrics.data_handling.graph_loading import (
+from collections import defaultdict
+from copy import deepcopy
+from segmentation_skeleton_metrics.datamodules.graph_loading import (
     GraphLoader,
     LabelHandler,
 )
 from segmentation_skeleton_metrics.utils import util
 from segmentation_skeleton_metrics.utils.img_util import TensorStoreImage
+from tqdm import tqdm
 
 import numpy as np
 import os
@@ -85,9 +88,7 @@ def load_proposal_df(csv_path, only_leaf2leaf=False, threshold=0):
 
 
 # --- Graph Operations ---
-def apply_label_mapping_to_graphs(
-    gt_graphs, fragment_graphs, labels, proposals_df
-):
+def apply_split_corrections(gt_graphs, fragment_graphs, labels, proposals_df):
     # Label handler
     label_pairs = proposals_df["Proposal"].tolist()
     label_handler = LabelHandler(labels=labels, label_pairs=label_pairs)
@@ -100,34 +101,13 @@ def apply_label_mapping_to_graphs(
     # Build ground truth graphs
     for graph in gt_graphs.values():
         graph.relabel_nodes(label_handler)
+        graph.fix_label_misalignments()
+
+    # Relabel fragments
+    for graph in fragment_graphs.values():
+        graph.label = label_handler.get(graph.name)
 
     return gt_graphs, fragment_graphs
-
-
-def apply_segment_labeling(graphs, labels):
-    segment_ids = [util.get_segment_id(u) for u in labels]
-    label_handler = LabelHandler(labels=segment_ids)
-    for key, graph in graphs.items():
-        graph.relabel_nodes(label_handler)
-
-
-def clean_tuple(t):
-    """
-    Normalizes a tuple-like string into a standardized ordered tuple.
-
-    Parameters
-    ----------
-    t : str
-        Input representing a tuple, typically a string like "('a', 'b')".
-
-    Returns
-    -------
-    Tuple[str]
-        A tuple containing two cleaned identifiers, sorted lexicographically.
-    """
-    proposal = str(t).translate(str.maketrans("", "", "()'"))
-    id1, id2 = sorted(proposal.replace(" ", "").split(","))
-    return (id1, id2)
 
 
 def combine_graphs(graphs, label_handler):
@@ -144,24 +124,31 @@ def combine_graphs(graphs, label_handler):
     new_graphs : Dict[str, FragmentGraph]
         Updated graphs.
     """
+    # Group graphs by class_id
+    groups = defaultdict(list)
+    for key, graph in graphs.items():
+        groups[label_handler.get(key)].append((key, graph))
+
+    # Merge each group once
     new_graphs = dict()
     node2name = dict()
-    for key, graph in graphs.items():
-        class_id = label_handler.get(key)
-        if class_id not in new_graphs:
-            new_graphs[class_id] = graph
-            node2name[class_id] = [key] * graph.number_of_nodes()
-        else:
+    for class_id, members in groups.items():
+        key0, graph0 = members[0]
+        new_graphs[class_id] = deepcopy(graph0)
+        node2name[class_id] = [key0] * graph0.number_of_nodes()
+        for key, graph in members[1:]:
             new_graphs[class_id].add_graph(graph, set_kdtree=False)
             node2name[class_id].extend([key] * graph.number_of_nodes())
-    set_kdtrees(graphs)
+
+    set_kdtrees(new_graphs)
     return new_graphs, node2name
 
 
-def get_subdf(df, only_leaf2leaf, threshold):
-    if only_leaf2leaf:
-        df = df[df["Leaf2Leaf"]]
-    return df[df["Prediction"] > threshold]
+def drop_filtered_labels(graphs, labels):
+    segment_ids = [util.get_segment_id(u) for u in labels]
+    label_handler = LabelHandler(labels=segment_ids)
+    for key, graph in graphs.items():
+        graph.relabel_nodes(label_handler)
 
 
 def merge_proposals(graphs, label_handler, proposals_df):
@@ -182,45 +169,96 @@ def merge_proposals(graphs, label_handler, proposals_df):
                 graphs[class_id1].add_highlighted_edge(node1, node2)
 
 
-def relabel_nodes_wrt_graph(gt_graphs, fragment_graphs):
-    # Create segment graphs
-    labels = list(fragment_graphs.keys())
-    label_handler = LabelHandler(labels=labels)
-    segment_graphs, node2label = combine_graphs(fragment_graphs, label_handler)
+def relabel_fragments_with_name(fragment_graphs):
+    for graph in fragment_graphs.values():
+        graph.label = graph.name
 
-    # Relabel ground truth graphs
+
+def relabel_groundtruth_wrt_fragments(gt_graphs, fragment_graphs):
+    segment_graphs, node2label = _build_segment_graphs(fragment_graphs)
     for gt_graph in gt_graphs.values():
-        node_label = ["0"] * gt_graph.number_of_nodes()
-        for i in [i for i in gt_graph.nodes if gt_graph.node_label[i] != "0"]:
-            # Node info
-            segment_id = gt_graph.node_label[i]
-            xyz = gt_graph.node_xyz(i)
-
-            # Find closest fragment node
-            if segment_id in segment_graphs:
-                dist, node = segment_graphs[segment_id].kdtree.query(xyz)
-                if dist < 20:
-                    node_label[i] = node2label[segment_id][node]
-
-        gt_graph.node_label = np.array(node_label)
-        gt_graph.fix_label_misalignments()
+        _relabel_gt_graph(gt_graph, segment_graphs, node2label)
 
 
-def update_and_merge_graphs(graphs, label_handler, proposals_df):
+def update_and_merge_graphs(fragment_graphs, label_handler, proposals_df):
     """
     Applies label updates and merge proposals into the graph collection.
     """
-    # Update fragment graph label
-    for graph in graphs.values():
-        graph.update_label(label_handler)
+    fragment_graphs, _ = combine_graphs(fragment_graphs, label_handler)
+    merge_proposals(fragment_graphs, label_handler, proposals_df)
+    return fragment_graphs
 
-    # Combine graphs and add proposals as edges
-    graphs, _ = combine_graphs(graphs, label_handler)
-    merge_proposals(graphs, label_handler, proposals_df)
-    return graphs
+
+def _build_segment_graphs(fragment_graphs):
+    # Group fragment graphs by segment_id
+    segment_to_ccs = defaultdict(list)
+    for key, graph in fragment_graphs.items():
+        segment_to_ccs[key.split(".")[0]].append((key, graph))
+
+    # Merge CCs per segment into a single graph for KD-tree queries
+    segment_graphs = dict()
+    node2label = dict()
+    iterator = tqdm(segment_to_ccs.items(), desc="Build Segment Graphs")
+    for segment_id, members in iterator:
+        # Create new fragment graph
+        key0, graph0 = members[0]
+        combined = deepcopy(graph0)
+
+        # Add fragment graphs with same segment ID
+        labels = [key0] * combined.number_of_nodes()
+        for key, graph in members[1:]:
+            combined.add_graph(graph, set_kdtree=False)
+            labels.extend([key] * graph.number_of_nodes())
+
+        # Set graph info
+        combined.set_kdtree()
+        segment_graphs[segment_id] = combined
+        node2label[segment_id] = labels
+    return segment_graphs, node2label
+
+
+def _relabel_gt_graph(gt_graph, segment_graphs, node2label):
+    node_label = ["0"] * gt_graph.number_of_nodes()
+    for i in gt_graph.nodes:
+        # Check for null label
+        if gt_graph.node_label[i] == "0":
+            continue
+
+        # Get segment ID of node
+        segment_id = str(gt_graph.node_label[i])
+        if segment_id not in segment_graphs:
+            continue
+
+        # Update label to closest fragment
+        xyz = gt_graph.node_xyz(i)
+        dist, node = segment_graphs[segment_id].kdtree.query(xyz)
+        if dist < 20:
+            node_label[i] = node2label[segment_id][node]
+
+    gt_graph.node_label = np.array(node_label)
+    gt_graph.fix_label_misalignments()
 
 
 # --- Helpers ---
+def clean_tuple(t):
+    """
+    Normalizes a tuple-like string into a standardized ordered tuple.
+
+    Parameters
+    ----------
+    t : str
+        Input representing a tuple, typically a string like "('a', 'b')".
+
+    Returns
+    -------
+    Tuple[str]
+        A tuple containing two cleaned identifiers, sorted lexicographically.
+    """
+    proposal = str(t).translate(str.maketrans("", "", "()'"))
+    id1, id2 = sorted(proposal.replace(" ", "").split(","))
+    return (id1, id2)
+
+
 def flip_coordinates(graphs):
     """
     Flips the X and Z coordinates for a collections of graphs.
@@ -230,9 +268,15 @@ def flip_coordinates(graphs):
     graph : Dict[str, FragmentGraph]
         Graphs to be updated.
     """
-    for key, graph in graphs.items():
-        graphs[key].node_voxel[:, [0, 2]] = graph.node_voxel[:, [2, 0]]
+    for graph in graphs.values():
+        graph.node_voxel[:, [0, 2]] = graph.node_voxel[:, [2, 0]]
     return graphs
+
+
+def get_subdf(df, only_leaf2leaf, threshold):
+    if only_leaf2leaf:
+        df = df[df["Leaf2Leaf"]]
+    return df[df["Prediction"] > threshold]
 
 
 def parse_coord_str(s):
@@ -266,5 +310,5 @@ def set_kdtrees(graphs):
     graph : Dict[str, FragmentGraph]
         Graphs to be updated.
     """
-    for key in graphs:
-        graphs[key].set_kdtree()
+    for graph in graphs.values():
+        graph.set_kdtree()
