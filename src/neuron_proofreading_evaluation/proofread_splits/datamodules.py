@@ -43,8 +43,8 @@ def load_groundtruth(
 
 def load_fragments(
     swcs_path,
-    label_handler,
     anisotropy=(0.748, 0.748, 1.0),
+    label_handler=None,
     swc_names=set(),
     use_anisotropy=False,
 ):
