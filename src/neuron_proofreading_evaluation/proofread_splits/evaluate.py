@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from neuron_proofreading_evaluation.proofread_splits import (
-    data_handling as data_util,
+    datamodules as data_util,
 )
 
 
