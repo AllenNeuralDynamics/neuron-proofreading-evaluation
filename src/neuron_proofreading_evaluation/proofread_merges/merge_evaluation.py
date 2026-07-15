@@ -59,6 +59,7 @@ def prec_recall_at_threshold(
         write_results(result, output_path, preamble=preamble)
     return result
 
+
 def prec_recall_curve(gt_df, pred_df, output_dir, dt=0.01):
     # Compute performance metrics for varying thresholds
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
@@ -84,6 +85,7 @@ def prec_recall_curve(gt_df, pred_df, output_dir, dt=0.01):
     output_path = os.path.join(output_dir, "prec_recall_f1_curves.png")
     viz.plot_precision_recall_f1(results_df, output_path=output_path)
     return results
+
 
 def prec_recall_per_neuron(gt_df, pred_df, threshold, output_dir):
     results = list()
