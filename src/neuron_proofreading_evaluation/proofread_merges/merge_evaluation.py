@@ -45,7 +45,7 @@ def compute_metrics(gt_kdtree, pred_sites, max_dist=32):
 
 
 def prec_recall_at_threshold(
-    gt_df, pred_df, threshold, output_dir, preamble=""
+    gt_df, pred_df, threshold, output_dir=None, preamble=""
 ):
     # Compute result
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
@@ -54,9 +54,10 @@ def prec_recall_at_threshold(
     result = compute_metrics(gt_kdtree, pred_sites)
 
     # Save results
-    output_path = os.path.join(output_dir, "performance_summary.txt")
-    write_results(result, output_path, preamble=preamble)
-
+    if output_dir:
+        output_path = os.path.join(output_dir, "performance_summary.txt")
+        write_results(result, output_path, preamble=preamble)
+    return result
 
 def prec_recall_curve(gt_df, pred_df, output_dir, dt=0.01):
     # Compute performance metrics for varying thresholds
@@ -79,14 +80,23 @@ def prec_recall_curve(gt_df, pred_df, output_dir, dt=0.01):
     path = os.path.join(output_dir, "results_varying_threshold.csv")
     results_df = pd.DataFrame(results).set_index("Threshold")
     results_df.to_csv(path)
-    print(results_df)
 
     output_path = os.path.join(output_dir, "prec_recall_f1_curves.png")
     viz.plot_precision_recall_f1(results_df, output_path=output_path)
+    return results
 
+def prec_recall_per_neuron(gt_df, pred_df, threshold, output_dir):
+    results = list()
+    for neuron_id, neuron_gt_df in gt_df.groupby("cell_id"):
+        result = prec_recall_at_threshold(neuron_gt_df, pred_df, threshold)
+        result["Neuron ID"] = neuron_id
+        results.append(result)
 
-def prec_recall_per_neuron(gt_df, pred_df, output_dir):
-    pass
+    # Save results
+    path = os.path.join(output_dir, "results_per_neuron.csv")
+    results_df = pd.DataFrame(results).set_index("Neuron ID")
+    results_df.to_csv(path)
+    return results
 
 
 # --- Save Results ---
