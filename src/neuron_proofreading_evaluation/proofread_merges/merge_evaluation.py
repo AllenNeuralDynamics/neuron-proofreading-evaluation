@@ -20,28 +20,31 @@ from neuron_proofreader.utils import swc_util
 
 
 # --- Performance Metrics ---
-def compute_metrics(gt_kdtree, pred_sites, max_dist=32):
-    # Get GT and Pred overlap
-    dd, _ = gt_kdtree.query(pred_sites)
+def compute_metrics(gt_kdtree, pred_sites, max_dist=20):
     n_gt = len(gt_kdtree.data)
     n_pred = len(pred_sites)
-    n_tp = len(pred_sites[dd <= max_dist])
 
-    # Compute metrics
-    recall = n_tp / (n_gt + 1e-5)
-    prec = n_tp / (n_pred + 1e-5)
+    # For each pred, find nearest GT — controls precision
+    dd_pred, _ = gt_kdtree.query(pred_sites)
+    n_tp_prec = (dd_pred <= max_dist).sum()
+
+    # For each GT, find nearest pred — controls recall (each GT counted once)
+    pred_kdtree = KDTree(pred_sites)
+    dd_gt, _ = pred_kdtree.query(gt_kdtree.data)
+    n_tp_recall = (dd_gt <= max_dist).sum()
+
+    recall = n_tp_recall / (n_gt + 1e-5)
+    prec = n_tp_prec / (n_pred + 1e-5)
     f1 = (2 * prec * recall) / (prec + recall + 1e-5)
 
-    # Store results
-    result = {
+    return {
         "# GT Sites": n_gt,
         "# Pred Sites": n_pred,
-        "# TP Sites": n_tp,
+        "# TP Sites": int(n_tp_recall),
         "Recall": recall,
         "Precision": prec,
         "F1": f1,
     }
-    return result
 
 
 def prec_recall_at_threshold(
@@ -49,7 +52,7 @@ def prec_recall_at_threshold(
 ):
     # Compute result
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
-    pred_sites = pred_df.loc[pred_df["Prediction"] > threshold, "xyz"]
+    pred_sites = pred_df.loc[pred_df["Prediction"] >= threshold, "xyz"]
     pred_sites = np.stack(pred_sites)
     result = compute_metrics(gt_kdtree, pred_sites)
 
