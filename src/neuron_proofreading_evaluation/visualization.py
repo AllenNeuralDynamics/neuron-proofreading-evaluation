@@ -10,7 +10,6 @@ Code for visualizing evaluation results.
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 
 def plot_precision_recall_f1(
@@ -38,27 +37,20 @@ def plot_precision_recall_f1(
     }
     text_color = "#2B2B2B"
 
-    # Create plot    
+    # Create plot
     fig, ax = plt.subplots(figsize=(7.5, 5), dpi=150)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
     for metric, color in colors.items():
         ax.plot(
-            df.index, df[metric], color=color, linewidth=2.2,
-            label=metric, zorder=3,
+            df.index,
+            df[metric],
+            color=color,
+            linewidth=2.2,
+            label=metric,
+            zorder=3,
         )
-
-    # Mark the best F1 operating point
-    best_idx = df["F1"].idxmax()
-    best_thresh = best_idx
-    best_f1 = df.loc[best_idx, "F1"]
-
-    ax.axvline(best_thresh, color="#888888", linestyle="--", linewidth=1, zorder=2)
-    ax.scatter(
-        [best_thresh], [best_f1], color=colors["F1"], edgecolor="white",
-        s=60, zorder=4,
-    )
 
     # Add axes
     ax.set_xlabel("Threshold", fontsize=11, color=text_color, labelpad=8)
@@ -93,7 +85,7 @@ def plot_predictions(
 ):
     """
     Plots a log-scaled histogram of a 1D array of prediction scores.
- 
+
     Parameters
     ----------
     pred : numpy.ndarray
@@ -121,18 +113,28 @@ def plot_predictions(
     # Add data
     pred = np.asarray(pred).ravel()
     ax.hist(
-        pred, bins=bins, color=bar_color, edgecolor="white",
-        linewidth=0.6, zorder=3,
+        pred,
+        bins=bins,
+        color=bar_color,
+        edgecolor="white",
+        linewidth=0.6,
+        zorder=3,
     )
     ax.axvline(
-        threshold, color=threshold_color, linestyle="--", linewidth=1.5,
-        label=f"Threshold = {threshold}", zorder=4,
+        threshold,
+        color=threshold_color,
+        linestyle="--",
+        linewidth=1.5,
+        label=f"Threshold = {threshold}",
+        zorder=4,
     )
 
     # Set axes
     ax.set_yscale("log")
     ax.set_xlabel("Score", fontsize=11, color=text_color, labelpad=8)
-    ax.set_ylabel("Count (log scale)", fontsize=11, color=text_color, labelpad=8)
+    ax.set_ylabel(
+        "Count (log scale)", fontsize=11, color=text_color, labelpad=8
+    )
     ax.set_title(title, fontsize=14, color=text_color, pad=14)
 
     ax.spines["top"].set_visible(False)
@@ -149,10 +151,13 @@ def plot_predictions(
 
     n_pos = int((pred >= threshold).sum())
     fig.text(
-        0.5, -0.03,
+        0.5,
+        -0.03,
         f"n = {len(pred)}   |   mean = {pred.mean():.3f}   |   "
         f"above threshold = {n_pos} ({n_pos / len(pred):.1%})",
-        ha="center", fontsize=9.5, color="#666666",
+        ha="center",
+        fontsize=9.5,
+        color="#666666",
     )
 
     plot_result(output_path=output_path)

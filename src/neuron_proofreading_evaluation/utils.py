@@ -8,8 +8,6 @@ Miscellaneous helper routines.
 
 """
 
-from google.cloud import storage
-
 import ast
 import numpy as np
 import os
@@ -34,12 +32,12 @@ def load_swc_points(swc_path):
 def parse_model_filename(filename):
     """
     Parses a model checkpoint filename and extracts its hyperparameters.
- 
+
     Parameters
     ----------
     filename : str
         Model filename (with or without a directory prefix / extension).
- 
+
     Returns
     -------
     params : dict
@@ -47,25 +45,25 @@ def parse_model_filename(filename):
     """
     basename = os.path.splitext(os.path.basename(filename))[0]
     tokens = basename.split("-")
- 
+
     params = dict()
     for token in tokens[1:]:
         if "=" in token:
             key, value = token.split("=", 1)
             params[key] = _cast(value)
     return params
- 
- 
+
+
 def _cast(value):
     """
     Casts a string value to bool, int, or float where possible, else leaves
     it as a string.
- 
+
     Parameters
     ----------
     value : str
         Value to be casted.
- 
+
     Returns
     -------
     value : bool, int, float, or str
