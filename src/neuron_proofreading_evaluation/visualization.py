@@ -133,7 +133,7 @@ def plot_predictions(
     ax.set_yscale("log")
     ax.set_xlabel("Score", fontsize=11, color=text_color, labelpad=8)
     ax.set_ylabel(
-        "Count (log scale)", fontsize=11, color=text_color, labelpad=8
+        "Count", fontsize=11, color=text_color, labelpad=8
     )
     ax.set_title(title, fontsize=14, color=text_color, pad=14)
 
