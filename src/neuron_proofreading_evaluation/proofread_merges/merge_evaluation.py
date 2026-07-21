@@ -9,7 +9,6 @@ Code for evaluating performance of merge detection models.
 """
 
 from scipy.spatial import KDTree
-from tqdm import tqdm
 
 import numpy as np
 import os
@@ -67,9 +66,9 @@ def prec_recall_curve(gt_df, pred_df, output_dir, dt=0.01):
     # Compute performance metrics for varying thresholds
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
     results = list()
-    for t in tqdm(np.arange(0, 1 + dt, dt), desc="Varying Threshold"):
+    for t in np.arange(0, 1 + dt, dt):
         # Get predicted sites
-        pred_sites = pred_df.loc[pred_df["Prediction"] > t, "xyz"]
+        pred_sites = pred_df.loc[pred_df["Prediction"] >= t, "xyz"]
         if len(pred_sites):
             pred_sites = np.stack(pred_sites)
         else:
@@ -104,12 +103,41 @@ def prec_recall_per_neuron(gt_df, pred_df, threshold, output_dir):
     return results
 
 
+def threshold_at_recall(df, target_recall=0.90):
+    """
+    Gets the threshold at which recall first drops to "target_recall".
+    """
+    # Extract sub-dataframe
+    subdf = df[["Threshold", "Recall"]].sort_values("Threshold")
+    subdf = subdf.reset_index(drop=True)
+
+    is_above = target_recall > subdf["Recall"].iloc[0]
+    is_below = target_recall < subdf["Recall"].iloc[-1]
+    if is_above or is_below:
+        return 0.2
+
+    # First row where recall <= target_recall
+    idx = (subdf["Recall"] <= target_recall).idxmax()
+    if idx == 0:
+        return subdf["Threshold"].iloc[0]
+
+    t0, r0 = subdf["Threshold"].iloc[idx - 1], subdf["Recall"].iloc[idx - 1]
+    t1, r1 = subdf["Threshold"].iloc[idx], subdf["Recall"].iloc[idx]
+
+    if r0 == r1:
+        return t0
+
+    # Interpolation between (t0, r0) and (t1, r1)
+    frac = (r0 - target_recall) / (r0 - r1)
+    return t0 + frac * (t1 - t0)
+
+
 # --- Save Results ---
 def save_sites(gt_df, pred_df, threshold, output_dir, max_dist=32):
     # Get sites
     gt_sites = np.array(list(gt_df["xyz"].values))
     gt_kdtree = KDTree(gt_sites)
-    pred_sites = pred_df.loc[pred_df["Prediction"] > threshold, "xyz"]
+    pred_sites = pred_df.loc[pred_df["Prediction"] >= threshold, "xyz"]
     pred_sites = np.stack(pred_sites)
 
     dd, _ = gt_kdtree.query(pred_sites)
