@@ -29,22 +29,22 @@ def compute_precision_recall(
     gt_graphs, fragment_graphs, labels, proposal_df, dt=0.02
 ):
     results_df = create_thresholded_results_df(dt=dt)
+    cache = {}  # (n_accepted, skip_merge_cnt) -> (n_splits, n_merges)
     for t in tqdm(results_df.index, desc="Thresholded Precision-Recall"):
-        # Compile proposals
         proposal_df_t = data_util.get_subdf(proposal_df, False, t)
         skip_merge_cnt = t < 0.29
+        cache_key = (len(proposal_df_t), skip_merge_cnt)
 
-        # Compute metrics
-        n_splits, n_merges = count_splits_and_merges(
-            deepcopy(gt_graphs),
-            deepcopy(fragment_graphs),
-            labels,
-            proposal_df_t,
-            skip_merge_cnt=skip_merge_cnt,
-        )
+        if cache_key not in cache:
+            cache[cache_key] = count_splits_and_merges(
+                deepcopy(gt_graphs),
+                deepcopy(fragment_graphs),
+                labels,
+                proposal_df_t,
+                skip_merge_cnt=skip_merge_cnt,
+            )
 
-        results_df.loc[t, "# Splits"] = n_splits
-        results_df.loc[t, "# Merges"] = n_merges
+        results_df.loc[t, "# Splits"], results_df.loc[t, "# Merges"] = cache[cache_key]
 
     return compute_precision_recall_from_df(results_df)
 
