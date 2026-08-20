@@ -17,10 +17,13 @@ readme = "README.md"
 dynamic = ["version"]
 
 dependencies = [
+    "boto3>=1.34,<2",
     "numpy",
     "pandas",
     "tqdm",
-    "segmentation-skeleton-metrics @ git+https://github.com/AllenNeuralDynamics/segmentation-skeleton-metrics.git@main"
+    "arborist @ git+https://github.com/AllenInstitute/arborist.git@main",
+    "segmentation-skeleton-metrics @ git+https://github.com/AllenNeuralDynamics/segmentation-skeleton-metrics.git@main",
+    "neuron-proofreader @ git+https://github.com/AllenInstitute/neuron-proofreader.git@main"
 ]
 
 [dependency-groups]
