@@ -15,7 +15,7 @@ import os
 import pandas as pd
 
 from neuron_proofreading_evaluation import visualization as viz
-from neuron_proofreader.utils import swc_util
+from arborist.utils.swc_loading import to_zipped_points
 
 
 # --- Performance Metrics ---
@@ -155,7 +155,7 @@ def save_sites(gt_df, pred_df, threshold, output_dir, max_dist=32):
 
 
 def save_points(zip_path, pts, color, prefix):
-    swc_util.write_points(
+    to_zipped_points(
         zip_path, pts, color=color, prefix=prefix, radius=10, write_mode="a"
     )
 

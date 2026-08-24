@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import re
 
-from neuron_proofreader.utils import swc_util
+from arborist.utils.swc_loading import Reader
 
 
 def load_sites_df(path):
@@ -36,7 +36,7 @@ def load_sites_df(path):
 
 
 def load_swc_points(swc_path):
-    reader = swc_util.Reader(verbose=False)
+    reader = Reader(verbose=False)
     swc_dicts = reader(swc_path)
     return np.array([swc_dict["xyz"] for swc_dict in swc_dicts]).squeeze()
 
