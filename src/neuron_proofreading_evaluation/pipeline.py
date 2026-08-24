@@ -31,9 +31,9 @@ class ResultsManager:
         self.step_types = {}
         self.step_dirs = {}
         self.step_swcs_paths = {}
-        self._discover_steps()
+        self._get_steps()
 
-    def _discover_steps(self):
+    def _get_steps(self):
         bucket, prefix = parse_cloud_path(self.s3_prefix)
         s3 = boto3.client("s3")
         resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter="/")
