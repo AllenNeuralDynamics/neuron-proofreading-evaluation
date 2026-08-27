@@ -59,6 +59,18 @@ def load_fragments(
     return graphs
 
 
+def load_labels(path):
+    return set(util.read_txt(path).splitlines())
+
+
+def load_merge_predictions(csv_path):
+    df = pd.read_csv(csv_path)
+    df["xyz"] = df["xyz"].apply(
+        lambda s: tuple(float(x) for x in re.findall(r"np\.float\d+\(([-\d.eE+]+)\)", s))
+    )
+    return df
+
+
 def load_multiround_proposal_df(csv_paths):
     def get_value(idx):
         name, _ = os.path.splitext(csv_path)
