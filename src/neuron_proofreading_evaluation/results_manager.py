@@ -25,12 +25,14 @@ class ResultsManager:
     path in step_swcs_paths.
     """
 
-    def __init__(self, s3_prefix):
+    def __init__(self, s3_prefix, brain_id, segmentation_id):
         self.s3_prefix = s3_prefix.rstrip("/") + "/"
+        self.brain_id = brain_id
+        self.segmentation_id = segmentation_id
         self.eval_steps = ["original"]
-        self.step_types = {}
+        self.step_types = {"original": "original"}
         self.step_dirs = {}
-        self.step_swcs_paths = {}
+        self.step_swcs_paths = {"original": os.path.join(s3_prefix.rstrip("/"), "original_swcs")}
         self._get_steps()
 
     def _get_steps(self):
@@ -51,8 +53,8 @@ class ResultsManager:
             self.eval_steps.append(dirname)
             self.step_dirs[dirname] = dir_path
 
+            self.step_swcs_paths[dirname] = os.path.join(dir_path, "swcs.zip")
             if "split_correction" in dirname:
                 self.step_types[dirname] = "split"
             else:
                 self.step_types[dirname] = "merge"
-                self.step_swcs_paths[dirname] = os.path.join(dir_path, "swcs.zip")
