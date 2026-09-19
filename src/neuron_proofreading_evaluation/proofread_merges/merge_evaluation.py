@@ -19,7 +19,7 @@ from arborist.utils.swc_loading import to_zipped_points
 
 
 # --- Performance Metrics ---
-def compute_metrics(gt_kdtree, pred_sites, max_dist=20):
+def compute_metrics(gt_kdtree, pred_sites, max_dist=20, n_total=None):
     n_gt = len(gt_kdtree.data)
     n_pred = len(pred_sites)
 
@@ -36,7 +36,7 @@ def compute_metrics(gt_kdtree, pred_sites, max_dist=20):
     prec = n_tp_prec / (n_pred + 1e-5)
     f1 = (2 * prec * recall) / (prec + recall + 1e-5)
 
-    return {
+    result = {
         "# GT Sites": n_gt,
         "# Pred Sites": n_pred,
         "# TP Sites": int(n_tp_recall),
@@ -45,15 +45,24 @@ def compute_metrics(gt_kdtree, pred_sites, max_dist=20):
         "F1": f1,
     }
 
+    if n_total is not None:
+        fp = n_pred - n_tp_prec
+        n_neg = n_total - n_gt
+        tn = n_neg - fp
+        specificity = tn / (n_neg + 1e-5)
+        result["Informedness"] = float(recall + specificity - 1)
+
+    return result
+
 
 def prec_recall_at_threshold(
-    gt_df, pred_df, threshold, output_dir=None, preamble=""
+    gt_df, pred_df, threshold, output_dir=None, preamble="", n_total=None
 ):
     # Compute result
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
     pred_sites = pred_df.loc[pred_df["Prediction"] >= threshold, "xyz"]
     pred_sites = np.stack(pred_sites)
-    result = compute_metrics(gt_kdtree, pred_sites)
+    result = compute_metrics(gt_kdtree, pred_sites, n_total=n_total)
 
     # Save results
     if output_dir:
