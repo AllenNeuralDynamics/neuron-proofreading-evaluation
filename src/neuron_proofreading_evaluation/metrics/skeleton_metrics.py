@@ -18,9 +18,9 @@ import pandas as pd
 from neuron_proofreading_evaluation import datamodules as data_util
 
 
-def compute(results_manager, gt_graphs, step_name, output_dir, ignore_kdtree=None):
+def compute(results_manager, gt_graphs, step_name, output_dir, ignore_kdtree=None, label_handler=None):
     # Load fragments
-    fragment_graphs = load_fragments(gt_graphs, results_manager.step_swcs_paths[step_name])
+    fragment_graphs = load_fragments(gt_graphs, results_manager.step_swcs_paths[step_name], label_handler)
 
     # Create output directory
     step_output_dir = os.path.join(output_dir, step_name)
@@ -86,10 +86,10 @@ def update_saved_results(evaluator, gt_graphs):
     evaluator.report_summary(results)
 
 
-def load_fragments(gt_graphs, swcs_path):
+def load_fragments(gt_graphs, swcs_path, label_handler=None):
     fragment_graphs = data_util.load_fragments(swcs_path, use_anisotropy=True)
     data_util.relabel_fragments_with_name(fragment_graphs)
-    data_util.relabel_groundtruth_wrt_fragments(gt_graphs, fragment_graphs)
+    data_util.relabel_groundtruth_wrt_fragments(gt_graphs, fragment_graphs, label_handler)
     return fragment_graphs
 
 
