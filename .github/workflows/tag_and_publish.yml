@@ -17,7 +17,7 @@ jobs:
         fetch-depth: 0
         token: ${{ secrets.SERVICE_TOKEN }}
     - name: Set up Python 3.10
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@v7
       with:
         python-version: '3.10'
     - name: Install dependencies
@@ -55,7 +55,7 @@ jobs:
         fi
         sed -i "s/$coverage_badge/$new_coverage_badge/g" README.md
     - name: Commit changes
-      uses: EndBug/add-and-commit@v10
+      uses: EndBug/add-and-commit@v11
       with:
         default_author: github_actions
         message: "ci: update badges [skip actions]"
@@ -75,7 +75,7 @@ jobs:
       - name: Pull latest changes
         run: git pull origin main
       - name: Set up Python 3.10
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Install dependencies
