@@ -19,9 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from neuron_proofreading_evaluation.proofread_splits import (
-    datamodules as data_util,
-)
+from neuron_proofreading_evaluation import datamodules as data_util
 
 
 # --- Precision-Recall Curves ---
