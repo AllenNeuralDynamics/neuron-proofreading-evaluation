@@ -186,10 +186,25 @@ def relabel_fragments_with_name(fragment_graphs):
         graph.label = graph.name
 
 
+class _PassthroughHandler:
+    """Wraps a LabelHandler so that labels absent from its mapping return
+    themselves instead of '0', preserving valid segment IDs that aren't
+    part of any connection pair."""
+
+    def __init__(self, handler):
+        self._handler = handler
+
+    def get(self, label):
+        result = self._handler.get(label)
+        return label if result == "0" else result
+
+
 def relabel_groundtruth_wrt_fragments(gt_graphs, fragment_graphs, label_handler=None):
     segment_graphs, node2label = _build_segment_graphs(fragment_graphs, label_handler)
     for gt_graph in gt_graphs.values():
-        _relabel_gt_graph(gt_graph, segment_graphs, node2label, label_handler)
+        if label_handler:
+            gt_graph.relabel_nodes(_PassthroughHandler(label_handler))
+        _relabel_gt_graph(gt_graph, segment_graphs, node2label)
 
 
 def update_and_merge_graphs(fragment_graphs, label_handler, proposals_df):
@@ -266,30 +281,18 @@ def _build_segment_graphs(fragment_graphs, label_handler=None):
     return segment_graphs, node2label
 
 
-def _relabel_gt_graph(gt_graph, segment_graphs, node2label, label_handler=None):
+def _relabel_gt_graph(gt_graph, segment_graphs, node2label):
     node_label = ["0"] * gt_graph.number_of_nodes()
     for i in gt_graph.nodes:
-        # Check for null label
         if gt_graph.node_label[i] == "0":
             continue
-
-        # Get class ID: remap absorbed segment IDs via label_handler
-        segment_id = str(gt_graph.node_label[i])
-        if label_handler:
-            class_id = label_handler.get(segment_id)
-            class_id = segment_id if class_id == "0" else class_id
-        else:
-            class_id = segment_id
-
+        class_id = str(gt_graph.node_label[i])
         if class_id not in segment_graphs:
             continue
-
-        # Update label to closest fragment
         xyz = gt_graph.node_xyz(i)
         dist, node = segment_graphs[class_id].kdtree.query(xyz)
         if dist < 20:
             node_label[i] = node2label[class_id][node]
-
     gt_graph.node_label = np.array(node_label)
     gt_graph.fix_label_misalignments()
 
