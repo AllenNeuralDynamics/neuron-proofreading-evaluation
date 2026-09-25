@@ -10,6 +10,7 @@ Code for loading data to evaluate split correction pipeline.
 
 from collections import defaultdict
 from copy import deepcopy
+from glob import glob
 from segmentation_skeleton_metrics.datamodules.graph_loading import (
     GraphLoader,
     LabelHandler,
@@ -97,6 +98,60 @@ def load_proposal_df(csv_path, only_leaf2leaf=False, threshold=0):
     df["Prediction"] = df["Prediction"].apply(float)
     df["Proposal"] = df["Proposal"].apply(clean_tuple)
     return get_subdf(df, only_leaf2leaf, threshold)
+
+
+def load_proposal_predictions(directory):
+    """
+    Load and merge split-correction predictions across multiple inference rounds.
+
+    Round 1 scores all proposals; each subsequent round scores only the
+    proposals still in the pool (those neither merged nor deleted in prior
+    rounds). This routine initializes the result from round 1 and then
+    overwrites predictions for any proposal that reappears in a later round,
+    so the returned DataFrame always holds the most recent score for every
+    proposal that was ever evaluated.
+
+    Parameters
+    ----------
+    directory : str
+        Path to the directory containing per-round prediction CSVs. Each CSV
+        filename must encode the round number as ``round=<N>`` (e.g.
+        ``predictions_round=1_threshold=0.5.csv``).
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns ``Proposal`` (sorted tuple of two SWC IDs) and
+        ``Prediction`` (float score), one row per unique proposal.
+    """
+    csv_paths = sorted(
+        glob(os.path.join(directory, "*.csv")),
+        key=_get_round_id,
+    )
+    if not csv_paths:
+        raise FileNotFoundError(f"No prediction CSVs found in: {directory}")
+
+    df = _load_proposal_csv(csv_paths[0]).set_index("Proposal")
+    for csv_path in csv_paths[1:]:
+        round_df = _load_proposal_csv(csv_path).set_index("Proposal")
+        df.update(round_df[["Prediction"]])
+
+    return df.reset_index()
+
+
+def _load_proposal_csv(csv_path):
+    df = pd.read_csv(csv_path).reset_index(drop=True)
+    df["Prediction"] = df["Prediction"].apply(float)
+    df["Proposal"] = df["Proposal"].apply(clean_tuple)
+    return df
+
+
+def _get_round_id(csv_path):
+    name = os.path.splitext(os.path.basename(csv_path))[0]
+    for part in name.split("_"):
+        if part.startswith("round="):
+            return float(part.split("=")[-1])
+    return 0
 
 
 # --- Graph Operations ---
