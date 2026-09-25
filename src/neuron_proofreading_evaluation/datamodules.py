@@ -19,6 +19,7 @@ from segmentation_skeleton_metrics.utils import util
 from segmentation_skeleton_metrics.utils.img_util import TensorStoreImage
 from tqdm import tqdm
 
+import boto3
 import numpy as np
 import os
 import pandas as pd
@@ -109,14 +110,15 @@ def load_proposal_predictions(directory):
     rounds). This routine initializes the result from round 1 and then
     overwrites predictions for any proposal that reappears in a later round,
     so the returned DataFrame always holds the most recent score for every
-    proposal that was ever evaluated.
+    proposal that was ever evaluated. Supports both local and S3 directories.
 
     Parameters
     ----------
     directory : str
         Path to the directory containing per-round prediction CSVs. Each CSV
         filename must encode the round number as ``round=<N>`` (e.g.
-        ``predictions_round=1_threshold=0.5.csv``).
+        ``predictions_round=1_threshold=0.5.csv``). May be a local path or an
+        S3 URI (``s3://bucket/prefix/``).
 
     Returns
     -------
@@ -124,10 +126,12 @@ def load_proposal_predictions(directory):
         DataFrame with columns ``Proposal`` (sorted tuple of two SWC IDs) and
         ``Prediction`` (float score), one row per unique proposal.
     """
-    csv_paths = sorted(
-        glob(os.path.join(directory, "*.csv")),
-        key=_get_round_id,
-    )
+    if directory.startswith("s3://"):
+        csv_paths = _list_s3_csvs(directory)
+    else:
+        csv_paths = glob(os.path.join(directory, "*.csv"))
+
+    csv_paths = sorted(csv_paths, key=_get_round_id)
     if not csv_paths:
         raise FileNotFoundError(f"No prediction CSVs found in: {directory}")
 
@@ -137,6 +141,18 @@ def load_proposal_predictions(directory):
         df.update(round_df[["Prediction"]])
 
     return df.reset_index()
+
+
+def _list_s3_csvs(s3_directory):
+    s3_directory = s3_directory.rstrip("/")
+    bucket, prefix = s3_directory[len("s3://"):].split("/", 1)
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix.rstrip("/") + "/")
+    return [
+        f"s3://{bucket}/{obj['Key']}"
+        for obj in resp.get("Contents", [])
+        if obj["Key"].endswith(".csv")
+    ]
 
 
 def _load_proposal_csv(csv_path):
