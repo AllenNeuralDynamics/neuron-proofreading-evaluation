@@ -104,13 +104,6 @@ def load_proposal_predictions(directory):
     """
     Load and merge split-correction predictions across multiple inference rounds.
 
-    Round 1 scores all proposals; each subsequent round scores only the
-    proposals still in the pool (those neither merged nor deleted in prior
-    rounds). This routine initializes the result from round 1 and then
-    overwrites predictions for any proposal that reappears in a later round,
-    so the returned DataFrame always holds the most recent score for every
-    proposal that was ever evaluated.
-
     Parameters
     ----------
     directory : str
