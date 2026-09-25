@@ -143,6 +143,7 @@ def _load_proposal_csv(csv_path):
     df = pd.read_csv(csv_path).reset_index(drop=True)
     df["Prediction"] = df["Prediction"].apply(float)
     df["Proposal"] = df["Proposal"].apply(clean_tuple)
+    df = df.sort_values("Prediction", ascending=False).drop_duplicates("Proposal")
     return df
 
 
