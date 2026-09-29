@@ -8,6 +8,7 @@ Code for loading data to evaluate split correction pipeline.
 
 """
 
+from botocore.exceptions import ClientError
 from collections import defaultdict
 from copy import deepcopy
 from glob import glob
@@ -62,7 +63,29 @@ def load_fragments(
 
 
 def load_labels(path):
-    return set(util.read_txt(path).splitlines())
+    """
+    Loads the segment IDs that the evaluation is restricted to.
+
+    Parameters
+    ----------
+    path : str
+        Path to a txt file in S3 with one segment ID per line.
+
+    Returns
+    -------
+    Set[str]
+        Segment IDs read from the file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the file could not be read from S3.
+    """
+    try:
+        text = util.read_txt(path)
+    except ClientError as e:
+        raise FileNotFoundError(f"No labels file found at {path}") from e
+    return set(text.splitlines())
 
 
 def load_merge_predictions(csv_path):
