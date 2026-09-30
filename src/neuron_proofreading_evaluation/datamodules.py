@@ -370,17 +370,31 @@ def _build_segment_graphs(fragment_graphs, label_handler=None):
 
 
 def _relabel_gt_graph(gt_graph, segment_graphs, node2label):
-    node_label = ["0"] * gt_graph.number_of_nodes()
+    # Group nodes by the segment graph their label points at, so that each
+    # segment graph is queried once with an array instead of once per node.
+    # A single-point query spends ~20us in call overhead, which dominates the
+    # search itself at these tree sizes.
+    class_to_nodes = defaultdict(list)
     for i in gt_graph.nodes:
         if gt_graph.node_label[i] == "0":
             continue
         class_id = str(gt_graph.node_label[i])
         if class_id not in segment_graphs:
             continue
-        xyz = gt_graph.node_xyz(i)
-        dist, node = segment_graphs[class_id].kdtree.query(xyz)
-        if dist < 20:
-            node_label[i] = node2label[class_id][node]
+        class_to_nodes[class_id].append(i)
+
+    node_label = ["0"] * gt_graph.number_of_nodes()
+    for class_id, nodes in class_to_nodes.items():
+        # "node_xyz_arr" indexes "node_voxel" with "nodes", so the results
+        # line up with "nodes" positionally.
+        dists, hits = segment_graphs[class_id].kdtree.query(
+            gt_graph.node_xyz_arr(nodes)
+        )
+        labels = node2label[class_id]
+        for i, dist, hit in zip(nodes, dists, hits):
+            if dist < 20:
+                node_label[i] = labels[hit]
+
     gt_graph.node_label = np.array(node_label)
     gt_graph.fix_label_misalignments()
 
