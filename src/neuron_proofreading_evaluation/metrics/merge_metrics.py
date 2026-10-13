@@ -172,6 +172,24 @@ def filter_near_skeleton(pred_df, skeleton_xyz, max_dist=SKELETON_RADIUS_UM):
     return pred_df[dd <= max_dist].copy()
 
 
+def is_reachable(gt_xyz, visited_xyz, max_dist=MATCH_RADIUS_UM):
+    """
+    Flags ground truth sites with a visited (scored) site within "max_dist".
+    Sites the search never visits cannot be detected by any model, so recall
+    is calibrated to the reachable ones.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean mask over the ground truth sites.
+    """
+    gt_xyz = np.asarray(gt_xyz, dtype=float).reshape(-1, 3)
+    if len(gt_xyz) == 0 or len(visited_xyz) == 0:
+        return np.zeros(len(gt_xyz), dtype=bool)
+    dd, _ = KDTree(visited_xyz).query(gt_xyz)
+    return dd <= max_dist
+
+
 def reachable_recall(gt_xyz, visited_xyz, max_dist=MATCH_RADIUS_UM):
     """
     Counts ground truth sites with a visited (scored) site within
@@ -183,11 +201,8 @@ def reachable_recall(gt_xyz, visited_xyz, max_dist=MATCH_RADIUS_UM):
     Tuple[int, int]
         Number of reachable ground truth sites and total ground truth sites.
     """
-    gt_xyz = np.asarray(gt_xyz, dtype=float).reshape(-1, 3)
-    if len(gt_xyz) == 0 or len(visited_xyz) == 0:
-        return 0, len(gt_xyz)
-    dd, _ = KDTree(visited_xyz).query(gt_xyz)
-    return int((dd <= max_dist).sum()), len(gt_xyz)
+    reachable = is_reachable(gt_xyz, visited_xyz, max_dist)
+    return int(reachable.sum()), len(reachable)
 
 
 def false_negatives(gt_df, pred_df, threshold, max_dist=32):

@@ -15,9 +15,10 @@ ground truth skeleton (`filter_near_skeleton`), then matched within 25 um
 (`compute_metrics`). `run_evaluation` writes the score histogram,
 precision-recall-F1 curves, per-neuron results, a performance summary at the
 decision threshold and at the thresholds reaching 97% and 95% recall, and the
-TP/FP/FN sites. `reachable_recall` gives the recall ceiling of a search
-schedule, and `visualization.save_gt_site_mips` saves image and mask MIPs at every
-ground truth site.
+TP/FP/FN sites. `is_reachable` flags the ground truth sites a search schedule
+visited, so recall can be calibrated to them (`reachable_recall` gives the
+ceiling), and `visualization.save_gt_site_mips` saves image and mask MIPs at
+every ground truth site.
 
 ### Whole-Brain Merge Detection Benchmark
 

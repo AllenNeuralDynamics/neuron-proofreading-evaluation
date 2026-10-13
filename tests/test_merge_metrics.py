@@ -65,6 +65,14 @@ class MergeMetricsTest(unittest.TestCase):
         )
         self.assertEqual((n_reachable, n_gt), (1, 3))
 
+    def test_is_reachable_mask(self):
+        visited = np.array([[0.0, 10.0, 0.0], [100.0, 30.0, 0.0]])
+        mask = merge_metrics.is_reachable(self.gt_xyz, visited, max_dist=25)
+        self.assertEqual(mask.dtype, bool)
+        self.assertEqual((len(mask), int(mask.sum())), (3, 1))
+        empty = merge_metrics.is_reachable(self.gt_xyz, np.empty((0, 3)))
+        self.assertFalse(empty.any())
+
     def test_threshold_at_recall_interpolates(self):
         curve = pd.DataFrame(
             {"Threshold": [0.0, 0.5, 1.0], "Recall": [1.0, 0.9, 0.0]}
