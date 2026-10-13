@@ -8,8 +8,12 @@ Code for visualizing evaluation results.
 
 """
 
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
+from neuron_proofreader.utils import img_util
+from scipy.spatial import KDTree
 
 
 def plot_precision_recall_f1(
@@ -132,9 +136,7 @@ def plot_predictions(
     # Set axes
     ax.set_yscale("log")
     ax.set_xlabel("Score", fontsize=11, color=text_color, labelpad=8)
-    ax.set_ylabel(
-        "Count", fontsize=11, color=text_color, labelpad=8
-    )
+    ax.set_ylabel("Count", fontsize=11, color=text_color, labelpad=8)
     ax.set_title(title, fontsize=14, color=text_color, pad=14)
 
     ax.spines["top"].set_visible(False)
@@ -180,3 +182,68 @@ def plot_result(output_path=None):
         plt.close()
     else:
         plt.show()
+
+
+def save_gt_site_mips(
+    graph, patch_loader, gt_df, pred_df, output_dir, max_dist=32
+):
+    """
+    Saves image and fragment-mask MIPs for every ground truth merge site.
+    Filenames carry the highest prediction score within "max_dist", or
+    "not_visited" if no prediction was scored nearby.
+
+    Parameters
+    ----------
+    graph : FragmentsGraph
+        Fragments graph the predictions were computed on.
+    patch_loader : DetectionPatchLoader
+        Loader that returns (node, patches) for a node in "graph".
+    gt_df : pandas.DataFrame
+        Ground truth sites with columns "unique_merge_id", "cell_id", "xyz".
+    pred_df : pandas.DataFrame
+        Predictions with columns "xyz" and "Prediction".
+    output_dir : str
+        Directory the PNGs are written to.
+    max_dist : float, optional
+        Radius (in microns) used to look up nearby predictions. Default is
+        32.
+
+    Returns
+    -------
+    List[dict]
+        One record per site with the nearest graph node distance and the
+        nearby prediction statistics.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    if len(pred_df):
+        pred_tree = KDTree(np.stack(pred_df["xyz"].values))
+    else:
+        pred_tree = None
+    scores = pred_df["Prediction"].values
+
+    records = []
+    for _, site in gt_df.iterrows():
+        xyz = np.asarray(site["xyz"], dtype=float)
+        idxs = pred_tree.query_ball_point(xyz, max_dist) if pred_tree else []
+        max_score = float(scores[idxs].max()) if idxs else float("nan")
+        tag = f"score{max_score:.2f}" if idxs else "not_visited"
+
+        node_dist, node = graph.kdtree.query(xyz)
+        _, patches = patch_loader(node)
+        output_path = os.path.join(
+            output_dir, f"{site['unique_merge_id']}-{tag}.png"
+        )
+        img_util.plot_image_and_segmentation_mips(
+            patches[0], patches[1], output_path=output_path
+        )
+        records.append(
+            {
+                "unique_merge_id": site["unique_merge_id"],
+                "cell_id": site["cell_id"],
+                "xyz": tuple(xyz.tolist()),
+                "node_dist": round(float(node_dist), 1),
+                "max_score": max_score,
+                f"n_pred_within_{max_dist}": len(idxs),
+            }
+        )
+    return records

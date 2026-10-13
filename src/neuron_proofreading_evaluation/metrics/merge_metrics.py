@@ -8,29 +8,44 @@ Code for evaluating performance of merge detection models.
 
 """
 
-from scipy.spatial import KDTree
+import os
 
 import numpy as np
-import os
 import pandas as pd
+from arborist.utils.swc_loading import to_zipped_points
+from scipy.spatial import KDTree
 
 from neuron_proofreading_evaluation import visualization as viz
-from arborist.utils.swc_loading import to_zipped_points
+
+# Same matching radius as the whole-brain merge detection benchmark
+MATCH_RADIUS_UM = 25.0
+
+# Predictions further than this from the ground truth skeleton sit on the
+# merged-in foreign neurite and are not scored
+SKELETON_RADIUS_UM = 15.0
+
+TARGET_RECALLS = (0.97, 0.95)
 
 
 # --- Performance Metrics ---
-def compute_metrics(gt_kdtree, pred_sites, max_dist=20, n_total=None):
+def compute_metrics(
+    gt_kdtree, pred_sites, max_dist=MATCH_RADIUS_UM, n_total=None
+):
     n_gt = len(gt_kdtree.data)
     n_pred = len(pred_sites)
 
-    # For each pred, find nearest GT — controls precision
-    dd_pred, _ = gt_kdtree.query(pred_sites)
-    n_tp_prec = (dd_pred <= max_dist).sum()
+    if n_pred == 0:
+        n_tp_prec = n_tp_recall = 0
+    else:
+        # For each pred, find nearest GT — controls precision
+        dd_pred, _ = gt_kdtree.query(pred_sites)
+        n_tp_prec = (dd_pred <= max_dist).sum()
 
-    # For each GT, find nearest pred — controls recall (each GT counted once)
-    pred_kdtree = KDTree(pred_sites)
-    dd_gt, _ = pred_kdtree.query(gt_kdtree.data)
-    n_tp_recall = (dd_gt <= max_dist).sum()
+        # For each GT, find nearest pred — controls recall (each GT counted
+        # once)
+        pred_kdtree = KDTree(pred_sites)
+        dd_gt, _ = pred_kdtree.query(gt_kdtree.data)
+        n_tp_recall = (dd_gt <= max_dist).sum()
 
     recall = n_tp_recall / (n_gt + 1e-5)
     prec = n_tp_prec / (n_pred + 1e-5)
@@ -60,8 +75,7 @@ def prec_recall_at_threshold(
 ):
     # Compute result
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
-    pred_sites = pred_df.loc[pred_df["Prediction"] >= threshold, "xyz"]
-    pred_sites = np.stack(pred_sites)
+    pred_sites = _pred_sites(pred_df, threshold)
     result = compute_metrics(gt_kdtree, pred_sites, n_total=n_total)
 
     # Save results
@@ -76,15 +90,7 @@ def prec_recall_curve(gt_df, pred_df, output_dir, dt=0.01):
     gt_kdtree = KDTree(list(gt_df["xyz"].values))
     results = list()
     for t in np.arange(0, 1 + dt, dt):
-        # Get predicted sites
-        pred_sites = pred_df.loc[pred_df["Prediction"] >= t, "xyz"]
-        if len(pred_sites):
-            pred_sites = np.stack(pred_sites)
-        else:
-            pred_sites = np.empty((0, 3), dtype=float)
-
-        # Compute metrics
-        result = compute_metrics(gt_kdtree, pred_sites)
+        result = compute_metrics(gt_kdtree, _pred_sites(pred_df, t))
         result["Threshold"] = t
         results.append(result)
 
@@ -141,29 +147,200 @@ def threshold_at_recall(df, target_recall=0.90):
     return t0 + frac * (t1 - t0)
 
 
+def filter_near_skeleton(pred_df, skeleton_xyz, max_dist=SKELETON_RADIUS_UM):
+    """
+    Keeps predictions within "max_dist" of the ground truth skeleton.
+
+    Parameters
+    ----------
+    pred_df : pandas.DataFrame
+        Predictions with an "xyz" column of coordinate tuples.
+    skeleton_xyz : numpy.ndarray
+        Ground truth skeleton coordinates with shape (n, 3).
+    max_dist : float, optional
+        Maximum distance (in microns) from the skeleton. Default is
+        SKELETON_RADIUS_UM.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Filtered predictions.
+    """
+    if len(pred_df) == 0 or len(skeleton_xyz) == 0:
+        return pred_df
+    dd, _ = KDTree(skeleton_xyz).query(np.stack(pred_df["xyz"].values))
+    return pred_df[dd <= max_dist].copy()
+
+
+def reachable_recall(gt_xyz, visited_xyz, max_dist=MATCH_RADIUS_UM):
+    """
+    Counts ground truth sites with a visited (scored) site within
+    "max_dist": the recall ceiling the search schedule imposes regardless of
+    the model.
+
+    Returns
+    -------
+    Tuple[int, int]
+        Number of reachable ground truth sites and total ground truth sites.
+    """
+    gt_xyz = np.asarray(gt_xyz, dtype=float).reshape(-1, 3)
+    if len(gt_xyz) == 0 or len(visited_xyz) == 0:
+        return 0, len(gt_xyz)
+    dd, _ = KDTree(visited_xyz).query(gt_xyz)
+    return int((dd <= max_dist).sum()), len(gt_xyz)
+
+
+def false_negatives(gt_df, pred_df, threshold, max_dist=32):
+    """
+    Lists ground truth sites without a prediction >= "threshold" within
+    "max_dist", along with the highest nearby prediction score (NaN when no
+    prediction was scored nearby).
+    """
+    if len(pred_df):
+        pred_tree = KDTree(np.stack(pred_df["xyz"].values))
+    else:
+        pred_tree = None
+    scores = pred_df["Prediction"].values
+
+    rows = list()
+    for _, site in gt_df.iterrows():
+        if pred_tree:
+            idxs = pred_tree.query_ball_point(site["xyz"], max_dist)
+        else:
+            idxs = []
+        max_score = scores[idxs].max() if idxs else np.nan
+        if idxs and max_score >= threshold:
+            continue
+        row = dict(site)
+        row["max_score"] = max_score
+        row[f"n_pred_within_{max_dist}"] = len(idxs)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def run_evaluation(
+    gt_df,
+    pred_df,
+    output_dir,
+    threshold=0.5,
+    n_total=None,
+    target_recalls=TARGET_RECALLS,
+    preamble="",
+):
+    """
+    Runs the full evaluation of merge predictions and writes the results to
+    "output_dir": score histogram, precision-recall-F1 curves, per-neuron
+    results at "threshold", a performance summary at "threshold" and at the
+    threshold reaching each target recall, TP/FP/FN sites and the
+    false-negative list at the last target recall.
+
+    Parameters
+    ----------
+    gt_df : pandas.DataFrame
+        Ground truth sites with columns "unique_merge_id", "cell_id", "xyz".
+    pred_df : pandas.DataFrame
+        Predictions with columns "xyz" and "Prediction".
+    output_dir : str
+        Directory results are written to.
+    threshold : float, optional
+        Decision threshold. Default is 0.5.
+    n_total : int, optional
+        Number of sites scored by the search, used for informedness. Default
+        is None.
+    target_recalls : Tuple[float], optional
+        Recall levels to report operating points at. Default is
+        TARGET_RECALLS.
+    preamble : str, optional
+        Text written at the top of the performance summary. Default is "".
+
+    Returns
+    -------
+    Dict[str, float]
+        Thresholds reported in the performance summary, keyed by label.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    viz.plot_predictions(
+        pred_df["Prediction"].values,
+        threshold=threshold,
+        output_path=os.path.join(
+            output_dir, "model_predictions_histogram.png"
+        ),
+    )
+    prec_recall_curve(gt_df, pred_df, output_dir)
+    prec_recall_per_neuron(gt_df, pred_df, threshold, output_dir)
+    curve_df = pd.read_csv(
+        os.path.join(output_dir, "results_varying_threshold.csv")
+    )
+
+    thresholds = {f"t={threshold}": threshold}
+    for target in target_recalls:
+        t = threshold_at_recall(curve_df, target_recall=target)
+        thresholds[f"t={t:.3f} (Recall>={target:.0%})"] = t
+
+    n_neurons = gt_df["cell_id"].nunique()
+    summary_path = os.path.join(output_dir, "performance_summary.txt")
+    with open(summary_path, "w") as f:
+        f.write(preamble)
+        for label, t in thresholds.items():
+            result = prec_recall_at_threshold(
+                gt_df, pred_df, t, n_total=n_total
+            )
+            n_gt = result["# GT Sites"]
+            n_pred = result["# Pred Sites"]
+            n_tp = result["# TP Sites"]
+            result["Detected Sites/Neuron"] = n_pred / n_neurons
+            result["Merges/Neuron Before"] = n_gt / n_neurons
+            result["Merges/Neuron"] = (n_gt - n_tp) / n_neurons
+
+            f.write(f"[{label}]\n")
+            for key, value in result.items():
+                if isinstance(value, float):
+                    f.write(f"   {key}: {value:.4f}\n")
+                else:
+                    f.write(f"   {key}: {value}\n")
+            f.write("\n")
+
+    t_last = list(thresholds.values())[-1]
+    save_sites(gt_df, pred_df, t_last, output_dir)
+    fn_df = false_negatives(gt_df, pred_df, t_last)
+    fn_df.to_csv(
+        os.path.join(output_dir, "false_negatives.tsv"), sep="\t", index=False
+    )
+    return thresholds
+
+
 # --- Save Results ---
 def save_sites(gt_df, pred_df, threshold, output_dir, max_dist=32):
     # Get sites
     gt_sites = np.array(list(gt_df["xyz"].values))
     gt_kdtree = KDTree(gt_sites)
-    pred_sites = pred_df.loc[pred_df["Prediction"] >= threshold, "xyz"]
-    pred_sites = np.stack(pred_sites)
+    pred_sites = _pred_sites(pred_df, threshold)
 
-    dd, _ = gt_kdtree.query(pred_sites)
-    tp_sites = pred_sites[dd <= max_dist]
-    fp_sites = pred_sites[dd > max_dist]
+    if len(pred_sites):
+        dd, _ = gt_kdtree.query(pred_sites)
+        tp_sites = pred_sites[dd <= max_dist]
+        fp_sites = pred_sites[dd > max_dist]
+    else:
+        tp_sites = fp_sites = pred_sites
 
-    dd, _ = KDTree(tp_sites).query(gt_sites)
-    fn_sites = gt_sites[dd > max_dist]
+    if len(tp_sites):
+        dd, _ = KDTree(tp_sites).query(gt_sites)
+        fn_sites = gt_sites[dd > max_dist]
+    else:
+        fn_sites = gt_sites
 
     # Save sites
     sites_path = os.path.join(output_dir, "site_evaluation.zip")
+    if os.path.exists(sites_path):
+        os.remove(sites_path)
     save_points(sites_path, tp_sites, "0.0 1.0 0.0", "true_positive")
     save_points(sites_path, fp_sites, "1.0 0.0 0.0", "false_positive")
     save_points(sites_path, fn_sites, "1.0 1.0 1.0", "false_negative")
 
 
 def save_points(zip_path, pts, color, prefix):
+    if len(pts) == 0:
+        return
     to_zipped_points(
         zip_path, pts, color=color, prefix=prefix, radius=10, write_mode="a"
     )
@@ -188,3 +365,11 @@ def write_results(results, output_path, preamble=""):
                 f.write(f"   {key}: {value:.4f}\n")
             else:
                 f.write(f"   {key}: {value}\n")
+
+
+# --- Helpers ---
+def _pred_sites(pred_df, threshold):
+    pred_sites = pred_df.loc[pred_df["Prediction"] >= threshold, "xyz"]
+    if len(pred_sites):
+        return np.stack(pred_sites)
+    return np.empty((0, 3), dtype=float)
