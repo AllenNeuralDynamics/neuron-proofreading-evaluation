@@ -289,7 +289,13 @@ def run_evaluation(
 
     thresholds = {f"t={threshold}": threshold}
     for target in target_recalls:
-        t = threshold_at_recall(curve_df, target_recall=target)
+        # Highest swept threshold that actually reaches the target, so the
+        # reported recall is never below the label
+        reached = curve_df.loc[curve_df["Recall"] >= target, "Threshold"]
+        if len(reached):
+            t = float(reached.max())
+        else:
+            t = threshold_at_recall(curve_df, target_recall=target)
         thresholds[f"t={t:.3f} (Recall>={target:.0%})"] = t
 
     n_neurons = gt_df["cell_id"].nunique()
